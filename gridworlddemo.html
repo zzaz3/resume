@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Game Tester</title>
+	<meta charset="utf-8" />
+    <script src="/scripts/jquery-3.1.1.min.js"></script>
+    <script src="/scripts/phaser.min.js"></script>
+    <script src="/scripts/rangeslider.min.js"></script>
+    
+</head>
+<body></body>
+    <script type="text/javascript">
+        var alpha=1; //learning rate
+        var lambda=0.5; //discount factor? make rewards decay? future rewards are worth less than current rewards
+        var gamma;
+        var epeslon=[];
+        var sarsa=.9;
+        var Qtable=[];
+        var randMove;
+        var move;
+        var guy;
+        var text;
+        var leftBound = 100;
+        var rightBound = 1050;
+        var upBound = 100;
+        var downBound = 1050;
+        var textCount;
+        var count = 0;
+        var textTest;
+        var winText;
+        var speed = 50;
+        var startX;
+        var startY;
+        var red=150;
+        var blue=150;
+        var green=150;
+        var roundNum = 1;
+        var hitMax = false;
+        var hitMin = true;
+        var grid = [];
+        var tempGrid;
+        var currentX;
+        var currentY;
+
+        var game = new Phaser.Game(1200, 1200, Phaser.AUTO, '', { preload: preload, create: create, update: update });
+
+        function preload() {
+
+            game.stage.backgroundColor = '#85b5e1';
+            game.load.image('block', 'images/block.png')
+            game.load.image('guy', 'images/guy.png');
+            game.load.image('gem', 'images/gem.png');
+            game.load.image('grid', 'images/tile.png');
+            //game.stage.background = 'images/gridWorld.png';
+        }
+
+        function create() {
+            
+            //square at bottom
+            block = game.add.sprite(800, 800, "block");
+            block = game.add.sprite(850, 850, "block");
+            block = game.add.sprite(800, 850, "block");
+            block = game.add.sprite(850, 800, "block");
+            block = game.add.sprite(750, 800, "block");
+            block = game.add.sprite(750, 850, "block");
+            block = game.add.sprite(700, 850, "block");
+            block = game.add.sprite(700, 800, "block");
+            
+            //wall top left
+            block = game.add.sprite(300, 200, "block");
+            block = game.add.sprite(350, 200, "block");
+            block = game.add.sprite(400, 200, "block");
+            block = game.add.sprite(450, 200, "block");
+            block = game.add.sprite(500, 200, "block");
+            block = game.add.sprite(550, 200, "block");
+            
+            block = game.add.sprite(300, 250, "block");
+            block = game.add.sprite(300, 300, "block");
+            block = game.add.sprite(300, 350, "block");
+            block = game.add.sprite(300, 400, "block");
+            block = game.add.sprite(300, 450, "block");
+            block = game.add.sprite(300, 500, "block");
+            
+            //set random values between 0 and 1 for top/bottom/left/right in every square in grid and store in matrix called "grid"
+            for(var i=0; i<20; i++) 
+            {
+                grid[i] = [];
+                for(var j=0; j<20; j++) 
+                {
+                    grid[i][j] = new square(i,j);
+                }
+            }
+            //create e table
+            for(var i=0; i<20; i++) 
+            {
+                epeslon[i] = [];
+                for(var j=0; j<20; j++) 
+                {
+                    epeslon[i][j] = new Esquare(i,j);
+                    
+                }
+            }
+            grid[14][14].reward=-.05;
+            grid[15][15].reward=-.05;
+            grid[14][15].reward=-.05;
+            grid[15][14].reward=-.05;
+            grid[13][14].reward=-.05;
+            grid[13][15].reward=-.05;
+            grid[12][15].reward=-.05;
+            grid[12][14].reward=-.05;
+            
+            grid[6][4].reward=-.05;
+            grid[7][4].reward=-.05;
+            grid[8][4].reward=-.05;
+            grid[9][4].reward=-.05;
+            grid[10][4].reward=-.05;
+            grid[11][4].reward=-.05;
+            
+            grid[6][5].reward=-.05;
+            grid[6][6].reward=-.05;
+            grid[6][7].reward=-.05;
+            grid[6][8].reward=-.05;
+            grid[6][9].reward=-.05;
+            grid[6][10].reward=-.05;
+            
+            backgroundSprite = game.add.tileSprite(100, 100, 1000, 1000, 'grid');
+            text = game.add.text(0, 0, "", { font: "32px Arial", fill: "red" });
+            //text for grid values
+            topText = game.add.text(0, 30, "", { font: "32px Arial", fill: "red" });
+            bottomText = game.add.text(0, 60, "", { font: "32px Arial", fill: "red" });
+            leftText = game.add.text(0, 90, "", { font: "32px Arial", fill: "red" });
+            rightText = game.add.text(0, 120, "", { font: "32px Arial", fill: "red" });
+            
+            textCount = game.add.text(500, 0, "", { font: "32px Arial", fill: "red" });
+            textTest = game.add.text(1050, 0, "", { font: "32px Arial", fill: "red" });
+            winText = game.add.text(500, 1150, "round #" + roundNum, { font: "32px Arial", fill: "red" });
+            //background = game.add.sprite(0,0, "grid");
+            startX = ((Math.floor(Math.random() * 19) + 0)*50)+100;
+            startY = ((Math.floor(Math.random() * 19) + 0)*50)+100;
+            guy = game.add.sprite(startX, startY, "guy");
+            //create gem and set reward
+            gem = game.add.sprite(500, 500, "gem");
+            grid[8][8].reward=500;
+            
+            
+            game.physics.arcade.enable(guy);
+            game.physics.arcade.enable(gem);
+            game.physics.arcade.enable(backgroundSprite);
+            guy.body.setSize(50, 50, 0, 0);
+            guy.body.tilePadding.set(50);
+            guy.body.onMoveComplete.add(makeMove);
+            //roll for first move
+            
+            
+            currentX=(guy.x - 100) / 50;
+            currentY=(guy.y - 100) / 50;
+            var randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+            //exploit
+            if(randNum<8)
+            {
+            var highestNum=0;
+            for(var i=0;i<4;i++)
+            {
+                if(grid[currentX][currentY].sides[i] > highestNum)
+                {
+                    highestNum=grid[currentX][currentY].sides[i];
+                    move=i;
+                }
+            }
+            }
+            else //explore
+            {
+                move = (Math.floor(Math.random() * 4) + 0);
+            }
+            
+            makeMove();
+            
+            //tempGrid = cloneArray(grid);
+            
+            //tempGrid=deepCopy(grid);
+            
+
+        }
+        //starts after found rewards.  Updates grid(permament) and resets Qtable(temperary) and starts all over
+        function newEpisode(){
+            
+            //var fso = new ActiveXObject("Scripting.FileSystemObject");
+    //var fh = fso.OpenTextFile("data.txt", 8, false, 0);
+    //fh.WriteLine(roundNum + ',' + count + endl);
+    //fh.Close();
+            
+            
+            epeslon=[];
+            
+            for(var i=0; i<20; i++) 
+            {
+                epeslon[i] = [];
+                for(var j=0; j<20; j++) 
+                {
+                    epeslon[i][j] = new Esquare(i,j);
+                    
+                }
+            }
+            
+        }
+        //gridworld stuff
+        function checkState() {
+
+        }
+
+        function chooseAction() {
+
+        }
+        function takeAction() {
+
+        }
+        function checkNewState() {
+
+        }
+        function getRewardValue(state, action, nextState) {
+
+        }
+        function getMoveValue(state, action) {//current location , location moving to.  Should return score of moving in that location?
+            //Q(s,a) = R(s,a,nS) + Y~max nA Q(nextState,Action)???
+        }
+        
+        
+        function square(x,y)
+        {
+            this.left=(Math.random() * (0.999 - 0.0200) + 0.0200).toFixed(4);
+            this.right=(Math.random() * (0.999 - 0.0200) + 0.0200).toFixed(4);
+            this.top=(Math.random() * (0.999 - 0.0200) + 0.0200).toFixed(4);
+            this.bottom=(Math.random() * (0.999 - 0.0200) + 0.0200).toFixed(4);
+            this.sides=[this.left,this.right,this.top,this.bottom];
+            this.topText=game.add.text(x*50+115, y*50+100, Number(Math.round(this.top+'e2')+'e-2').toString(), { font: "9px Arial", fill: "black" });
+            this.leftText=game.add.text(x*50+100, y*50+120, Number(Math.round(this.left+'e2')+'e-2').toString(), { font: "9px Arial", fill: "black" });
+            this.rightText=game.add.text(x*50+130, y*50+120, Number(Math.round(this.right+'e2')+'e-2').toString(), { font: "9px Arial", fill: "black" });
+            this.bottomText=game.add.text(x*50+115, y*50+138, Number(Math.round(this.bottom+'e2')+'e-2').toString(), { font: "9px Arial", fill: "black" });
+            
+            this.x=x;
+            this.y=y;
+            this.reward=-.01;
+        }
+        function Esquare(x,y)
+        {
+            this.left=0;
+            this.right=0;
+            this.top=0;
+            this.bottom=0;
+            //this.sides=[this.left,this.right,this.top,this.bottom];
+            //this.moveMade;
+            //this.x=x;
+            //this.y=y;
+            //this.reward=-.01;
+        }
+        
+        function canMove(caseNum) {
+            switch (caseNum) {
+                case 0: //left
+                    if (guy.x == 100) {
+                        return false;
+                    } else return true;
+                case 1: //right
+                    if (guy.x == 1050) {
+                        return false;
+                    } else return true;
+                case 2://up
+                    if (guy.y == 100) {
+                        return false;
+                    } else return true;
+                case 3://down
+                    if (guy.y == 1050) {
+                        return false;
+                    } else return true;
+            }         
+        }
+
+        function updateXY() {
+            guy.x = Math.round(Math.round((guy.x / 50)) * 50);
+            guy.y = Math.round(Math.round((guy.y / 50)) * 50);
+            textTest.setText(Math.round((guy.x / 50))*50 + "," + Math.round((guy.y / 50))*50);
+        }
+
+        function reset() {
+            var randX = ((Math.floor(Math.random() * 19) + 0) * 50) + 100;
+            var randY = ((Math.floor(Math.random() * 19) + 0) * 50) + 100;
+            guy = game.add.sprite(randX, randY, "guy");
+            gem = game.add.sprite(500, 500, "gem");
+            game.physics.arcade.enable(guy);
+            game.physics.arcade.enable(gem);
+            guy.body.setSize(50, 50, 0, 0);
+            guy.body.tilePadding.set(50);
+            guy.body.onMoveComplete.add(makeMove);
+            makeMove();
+        }
+        
+        function movePolicy(){
+            
+        }
+
+        function makeMove() {
+            updateXY();
+            count++;
+            textCount.setText("Move Count: " + count);
+            currentX=(guy.x - 100) / 50;
+            currentY=(guy.y - 100) / 50;
+            text.setText(currentX + "," + currentY);
+            
+            topText.setText(grid[currentX][currentY].top);
+            bottomText.setText(grid[currentX][currentY].bottom);
+            leftText.setText(grid[currentX][currentY].left);
+            rightText.setText(grid[currentX][currentY].right);
+
+            switch (move) { //check reward for move and make move
+                case 0: //move left
+                    if (canMove(move)) { 
+                        guy.body.moveTo(speed, 50, Phaser.ANGLE_LEFT);
+                        var moveMade =move;
+                        var randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        var highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX-1][currentY].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX-1][currentY].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                        while (!canMove(move))
+                        {
+                            
+                        randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX-1][currentY].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX-1][currentY].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                        }
+                        
+                        var currentAction = grid[currentX][currentY].left;
+                        
+                        var nextState = grid[currentX-1][currentY]//l,r,t,b?
+                        var nextAction;
+                        
+                        switch(move){
+                        case 0:
+                            nextAction = grid[currentX-1][currentY].left;
+                        case 1:
+                            nextAction = grid[currentX-1][currentY].right;
+                        case 2:
+                            nextAction = grid[currentX-1][currentY].top;
+                        case 3:
+                            nextAction = grid[currentX-1][currentY].bottom;
+                        }
+                        
+                        gamma= nextState.reward+ (lambda*(nextAction-currentAction));
+                        epeslon[currentX][currentY].left=epeslon[currentX][currentY].left + 1;
+                        
+                        //for all state/actions
+                        for(var i=0;i<grid.length;i++)
+                        {
+                            for(var j=0;j<grid[i].length;j++)
+                            {
+                                grid[i][j].left=(parseFloat(grid[i][j].left + (alpha*gamma*epeslon[i][j].left))).toFixed(4);
+                                grid[i][j].right=(parseFloat(grid[i][j].right + (alpha*gamma*epeslon[i][j].right))).toFixed(4);
+                                grid[i][j].top=(parseFloat(grid[i][j].top + (alpha*gamma*epeslon[i][j].top))).toFixed(4);
+                                grid[i][j].bottom=(parseFloat(grid[i][j].bottom + (alpha*gamma*epeslon[i][j].bottom))).toFixed(4);
+                                
+                                grid[i][j].leftText.setText((parseFloat(grid[i][j].left)).toFixed(2));
+                                grid[i][j].rightText.setText((parseFloat(grid[i][j].right)).toFixed(2));
+                                grid[i][j].topText.setText((parseFloat(grid[i][j].top)).toFixed(2));
+                                grid[i][j].bottomText.setText((parseFloat(grid[i][j].bottom)).toFixed(2));
+                                
+                            }
+                        }
+                        for(var i=0;i<epeslon.length;i++)
+                        {
+                            for(var j=0;j<epeslon[i].length;j++)
+                            {
+                                epeslon[i][j].left=lambda*sarsa*epeslon[i][j].left;
+                                epeslon[i][j].right=lambda*sarsa*epeslon[i][j].right;
+                                epeslon[i][j].top=lambda*sarsa*epeslon[i][j].top;
+                                epeslon[i][j].bottom=lambda*sarsa*epeslon[i][j].bottom;
+                            }
+                        }
+                        
+                        //grid[currentX][currentY].left = currentAction + alpha * (nextState.reward + (lambda * nextAction) - currentAction);
+                        
+                        //make copy of current action object
+                        //var newQ= new Qsquare(currentX,currentY);
+                        //newQ.left=grid[currentX][currentY].left;
+                        //newQ.right=grid[currentX][currentY].right;
+                        //newQ.top=grid[currentX][currentY].top;
+                        //newQ.bottom=grid[currentX][currentY].bottom;
+                        //newQ.x=grid[currentX][currentY].x;
+                        //newQ.y=grid[currentX][currentY].y;
+                        //newQ.sides=grid[currentX][currentY].sides.slice();
+                        //newQ.left = currentAction + alpha * (nextState.reward + (lambda * nextAction) - currentAction)
+                        //newQ.moveMade = moveMade;
+                        //push new action value to Qtable
+                        //should decay? or pass to all old moves
+                        //Qtable.push(newQ);
+                        
+                        
+                        
+                         } else { 
+                            
+                            var randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        var highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX][currentY].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX][currentY].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                            
+                            makeMove() }
+                    break;
+                case 1: //move right
+                    if (canMove(move)) { 
+                        guy.body.moveTo(speed, 50, Phaser.ANGLE_RIGHT);
+                        var moveMade =move;
+                        var randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        var highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX+1][currentY].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX+1][currentY].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                        while (!canMove(move))
+                        {
+                            
+                        randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX+1][currentY].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX+1][currentY].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                        }
+                        
+                        var currentAction = grid[currentX][currentY].right;
+                        
+                        var nextState = grid[currentX+1][currentY]//l,r,t,b?
+                        var nextAction;
+                        switch(move){
+                        case 0:
+                            nextAction = grid[currentX+1][currentY].left;
+                        case 1:
+                            nextAction = grid[currentX+1][currentY].right;
+                        case 2:
+                            nextAction = grid[currentX+1][currentY].top;
+                        case 3:
+                            nextAction = grid[currentX+1][currentY].bottom;
+                        }
+                        gamma= nextState.reward+ (lambda*(nextAction-currentAction));
+                        epeslon[currentX][currentY].right=epeslon[currentX][currentY].right + 1;
+                        
+                        //for all state/actions
+                        for(var i=0;i<grid.length;i++)
+                        {
+                            for(var j=0;j<grid[i].length;j++)
+                            {
+                                grid[i][j].left=(parseFloat(grid[i][j].left + (alpha*gamma*epeslon[i][j].left))).toFixed(4);
+                                grid[i][j].right=(parseFloat(grid[i][j].right + (alpha*gamma*epeslon[i][j].right))).toFixed(4);
+                                grid[i][j].top=(parseFloat(grid[i][j].top + (alpha*gamma*epeslon[i][j].top))).toFixed(4);
+                                grid[i][j].bottom=(parseFloat(grid[i][j].bottom + (alpha*gamma*epeslon[i][j].bottom))).toFixed(4);
+                                
+                                grid[i][j].leftText.setText((parseFloat(grid[i][j].left)).toFixed(2));
+                                grid[i][j].rightText.setText((parseFloat(grid[i][j].right)).toFixed(2));
+                                grid[i][j].topText.setText((parseFloat(grid[i][j].top)).toFixed(2));
+                                grid[i][j].bottomText.setText((parseFloat(grid[i][j].bottom)).toFixed(2));
+                                
+                            }
+                        }
+                        for(var i=0;i<epeslon.length;i++)
+                        {
+                            for(var j=0;j<epeslon[i].length;j++)
+                            {
+                                epeslon[i][j].left=lambda*sarsa*epeslon[i][j].left;
+                                epeslon[i][j].right=lambda*sarsa*epeslon[i][j].right;
+                                epeslon[i][j].top=lambda*sarsa*epeslon[i][j].top;
+                                epeslon[i][j].bottom=lambda*sarsa*epeslon[i][j].bottom;
+                            }
+                        }
+                        
+                        //grid[currentX][currentY].left = currentAction + alpha * (nextState.reward + (lambda * nextAction) - currentAction);
+                        
+                        //make copy of current action object
+                        //var newQ= new Qsquare(currentX,currentY);
+                        //newQ.left=grid[currentX][currentY].left;
+                        //newQ.right=grid[currentX][currentY].right;
+                        //newQ.top=grid[currentX][currentY].top;
+                        //newQ.bottom=grid[currentX][currentY].bottom;
+                        //newQ.x=grid[currentX][currentY].x;
+                        //newQ.y=grid[currentX][currentY].y;
+                        //newQ.sides=grid[currentX][currentY].sides.slice();
+                        //newQ.left = currentAction + alpha * (nextState.reward + (lambda * nextAction) - currentAction)
+                        //newQ.moveMade = moveMade;
+                        //push new action value to Qtable
+                        //should decay? or pass to all old moves
+                        //Qtable.push(newQ);
+                        
+                        
+                         } else { 
+                            
+                            var randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        var highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX][currentY].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX][currentY].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                            
+                            makeMove() }
+                    break;
+                case 2: //move up
+                    if (canMove(move)) { 
+                        guy.body.moveTo(speed, 50, Phaser.ANGLE_UP);
+                        var moveMade =move;
+                        var randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        var highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX][currentY-1].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX][currentY-1].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                        while (!canMove(move))
+                        {
+                            
+                        randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX][currentY-1].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX][currentY-1].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                        }
+                        
+                        var currentAction = grid[currentX][currentY].top;
+                        
+                        var nextState = grid[currentX][currentY-1]//l,r,t,b?
+                        var nextAction;
+                        switch(move){
+                        case 0:
+                            nextAction = grid[currentX][currentY-1].left;
+                        case 1:
+                            nextAction = grid[currentX][currentY-1].right;
+                        case 2:
+                            nextAction = grid[currentX][currentY-1].top;
+                        case 3:
+                            nextAction = grid[currentX][currentY-1].bottom;
+                        }
+                        gamma= nextState.reward+ (lambda*(nextAction-currentAction));
+                        epeslon[currentX][currentY].top=epeslon[currentX][currentY].top + 1;
+                        
+                        //for all state/actions
+                        for(var i=0;i<grid.length;i++)
+                        {
+                            for(var j=0;j<grid[i].length;j++)
+                            {
+                                grid[i][j].left=(parseFloat(grid[i][j].left + (alpha*gamma*epeslon[i][j].left))).toFixed(4);
+                                grid[i][j].right=(parseFloat(grid[i][j].right + (alpha*gamma*epeslon[i][j].right))).toFixed(4);
+                                grid[i][j].top=(parseFloat(grid[i][j].top + (alpha*gamma*epeslon[i][j].top))).toFixed(4);
+                                grid[i][j].bottom=(parseFloat(grid[i][j].bottom + (alpha*gamma*epeslon[i][j].bottom))).toFixed(4);
+                                
+                                grid[i][j].leftText.setText((parseFloat(grid[i][j].left)).toFixed(2));
+                                grid[i][j].rightText.setText((parseFloat(grid[i][j].right)).toFixed(2));
+                                grid[i][j].topText.setText((parseFloat(grid[i][j].top)).toFixed(2));
+                                grid[i][j].bottomText.setText((parseFloat(grid[i][j].bottom)).toFixed(2));
+                                
+                            }
+                        }
+                        for(var i=0;i<epeslon.length;i++)
+                        {
+                            for(var j=0;j<epeslon[i].length;j++)
+                            {
+                                epeslon[i][j].left=lambda*sarsa*epeslon[i][j].left;
+                                epeslon[i][j].right=lambda*sarsa*epeslon[i][j].right;
+                                epeslon[i][j].top=lambda*sarsa*epeslon[i][j].top;
+                                epeslon[i][j].bottom=lambda*sarsa*epeslon[i][j].bottom;
+                            }
+                        }
+                        
+                        //grid[currentX][currentY].left = currentAction + alpha * (nextState.reward + (lambda * nextAction) - currentAction);
+                        
+                        //make copy of current action object
+                        //var newQ= new Qsquare(currentX,currentY);
+                        //newQ.left=grid[currentX][currentY].left;
+                        //newQ.right=grid[currentX][currentY].right;
+                        //newQ.top=grid[currentX][currentY].top;
+                        //newQ.bottom=grid[currentX][currentY].bottom;
+                        //newQ.x=grid[currentX][currentY].x;
+                        //newQ.y=grid[currentX][currentY].y;
+                        //newQ.sides=grid[currentX][currentY].sides.slice();
+                        //newQ.left = currentAction + alpha * (nextState.reward + (lambda * nextAction) - currentAction)
+                        //newQ.moveMade = moveMade;
+                        //push new action value to Qtable
+                        //should decay? or pass to all old moves
+                        //Qtable.push(newQ);
+                        
+                        
+                         } else { 
+                            
+                            var randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        var highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX][currentY].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX][currentY].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                            
+                            makeMove() }
+                    break;
+                case 3: //move down
+                    if (canMove(move)) { 
+                        guy.body.moveTo(speed, 50, Phaser.ANGLE_DOWN);
+                        var moveMade =move;
+                        var randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        var highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX][currentY+1].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX][currentY+1].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                        while (!canMove(move))
+                        {
+                            
+                        randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX][currentY+1].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX][currentY+1].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                        }
+                        
+                        var currentAction = grid[currentX][currentY].bottom;
+                        
+                        var nextState = grid[currentX][currentY+1]//l,r,t,b?
+                        var nextAction;
+                        switch(move){
+                        case 0:
+                            nextAction = grid[currentX][currentY+1].left;
+                        case 1:
+                            nextAction = grid[currentX][currentY+1].right;
+                        case 2:
+                            nextAction = grid[currentX][currentY+1].top;
+                        case 3:
+                            nextAction = grid[currentX][currentY+1].bottom;
+                        }
+                        gamma= nextState.reward+ (lambda*(nextAction-currentAction));
+                        epeslon[currentX][currentY].bottom=epeslon[currentX][currentY].bottom + 1;
+                        
+                        //for all state/actions
+                        for(var i=0;i<grid.length;i++)
+                        {
+                            for(var j=0;j<grid[i].length;j++)
+                            {
+                                grid[i][j].left=(parseFloat(grid[i][j].left + (alpha*gamma*epeslon[i][j].left))).toFixed(4);
+                                grid[i][j].right=(parseFloat(grid[i][j].right + (alpha*gamma*epeslon[i][j].right))).toFixed(4);
+                                grid[i][j].top=(parseFloat(grid[i][j].top + (alpha*gamma*epeslon[i][j].top))).toFixed(4);
+                                grid[i][j].bottom=(parseFloat(grid[i][j].bottom + (alpha*gamma*epeslon[i][j].bottom))).toFixed(4);
+                                
+                                grid[i][j].leftText.setText((parseFloat(grid[i][j].left)).toFixed(2));
+                                grid[i][j].rightText.setText((parseFloat(grid[i][j].right)).toFixed(2));
+                                grid[i][j].topText.setText((parseFloat(grid[i][j].top)).toFixed(2));
+                                grid[i][j].bottomText.setText((parseFloat(grid[i][j].bottom)).toFixed(2));
+                                
+                            }
+                        }
+                        for(var i=0;i<epeslon.length;i++)
+                        {
+                            for(var j=0;j<epeslon[i].length;j++)
+                            {
+                                epeslon[i][j].left=lambda*sarsa*epeslon[i][j].left;
+                                epeslon[i][j].right=lambda*sarsa*epeslon[i][j].right;
+                                epeslon[i][j].top=lambda*sarsa*epeslon[i][j].top;
+                                epeslon[i][j].bottom=lambda*sarsa*epeslon[i][j].bottom;
+                            }
+                        }
+                        
+                        //grid[currentX][currentY].left = currentAction + alpha * (nextState.reward + (lambda * nextAction) - currentAction);
+                        
+                        //make copy of current action object
+                        //var newQ= new Qsquare(currentX,currentY);
+                        //newQ.left=grid[currentX][currentY].left;
+                        //newQ.right=grid[currentX][currentY].right;
+                        //newQ.top=grid[currentX][currentY].top;
+                        //newQ.bottom=grid[currentX][currentY].bottom;
+                        //newQ.x=grid[currentX][currentY].x;
+                        //newQ.y=grid[currentX][currentY].y;
+                        //newQ.sides=grid[currentX][currentY].sides.slice();
+                        //newQ.left = currentAction + alpha * (nextState.reward + (lambda * nextAction) - currentAction)
+                        //newQ.moveMade = moveMade;
+                        //push new action value to Qtable
+                        //should decay? or pass to all old moves
+                        //Qtable.push(newQ);
+                        
+                        
+                         } else { 
+                            var randNum = (Math.floor(Math.random() * 10) + 0); //explore or exploit?
+            
+                        //exploit
+                        if(randNum<8)
+                        {
+                        var highestNum=0;
+                        for(var i=0;i<4;i++)
+                        {
+                            if(grid[currentX][currentY].sides[i] > highestNum)
+                            {
+                                highestNum=grid[currentX][currentY].sides[i];
+                                move=i;
+                            }
+                        }
+                        }
+                        else //explore
+                        {
+                            move = (Math.floor(Math.random() * 4) + 0);
+                        }
+                            
+                            makeMove() }
+                    break;
+            }
+            
+            //updateXY();
+        }
+
+        function hitGem() {
+            //game.stage.backgroundColor = '#992d2d';
+            gem.kill();
+            guy.kill();
+            roundNum++;
+            winText.setText("round #" + roundNum);
+            newEpisode();
+            reset();
+            
+        }
+        function makeMark() {
+            backgroundSprite.backgroundColor = '#992d2d'; winText.setText("asdfasd" + roundNum);
+        }
+
+        function getColor() {
+            if (hitMax == true) {
+                green--;
+                red--;
+                blue--;
+            }
+            else if (hitMin == true) {
+                green++;
+                red++;
+                blue++;
+            }
+            //if (red == 175)
+            //{ hitMax = true; hitMin = false; }
+            if (red == 150)
+            { hitMax = false; hitMin = true; }
+            return ("rgba("+(red)+","+(blue)+","+(green)+")")
+        }
+
+        function update() {
+            //game.stage.backgroundColor = getColor();
+            //guy.body.onMoveComplete.add(updateXY);
+            game.physics.arcade.overlap(guy, gem, hitGem);
+            //game.physics.arcade.overlap(guy, backgroundSprite, makeMark);
+
+            }
+        
+        function render() {
+
+        }
+
+    </script>
+
+</body>
+</html>
